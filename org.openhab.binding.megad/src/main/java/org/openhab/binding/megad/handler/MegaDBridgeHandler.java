@@ -5,14 +5,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URLDecoder;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.smarthome.core.library.types.OnOffType;
 import org.eclipse.smarthome.core.thing.Bridge;
 import org.eclipse.smarthome.core.thing.ChannelUID;
 import org.eclipse.smarthome.core.thing.ThingStatus;
@@ -32,17 +34,17 @@ import org.slf4j.LoggerFactory;
 
 public class MegaDBridgeHandler extends BaseBridgeHandler {
 
-    private Logger logger = LoggerFactory.getLogger(MegaDBridgeHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(MegaDBridgeHandler.class);
 
-    private boolean isConnect = false;
+    private final boolean isConnect = false;
     private int port;
     private ScheduledFuture<?> pollingJob;
-    Socket s = null;
-    private ServerSocket ss;
-    private InputStream is;
-    private OutputStream os;
+    Socket socket = null;
+    private ServerSocket serverSocket;
+    private InputStream inputStream;
+    private OutputStream outputStream;
     private boolean isRunning = true;
-    private int refreshInterval = 300;
+    private final int refreshInterval = 300;
     MegaDHandler megaDHandler;
 
     public MegaDBridgeHandler(Bridge bridge) {
@@ -71,7 +73,7 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
 
     }
 
-    private Map<String, MegaDHandler> thingHandlerMap = new HashMap<String, MegaDHandler>();
+    private final Map<String, MegaDHandler> thingHandlerMap = new HashMap<String, MegaDHandler>();
 
     public void registerMegadThingListener(MegaDHandler thingHandler) {
         if (thingHandler == null) {
@@ -147,12 +149,12 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
         }
     }
 
-    private Runnable pollingRunnable = new Runnable() {
+    private final Runnable pollingRunnable = new Runnable() {
         @Override
         public void run() {
             logger.debug("Polling job called");
             try {
-                ss = new ServerSocket(port);
+                serverSocket = new ServerSocket(port);
                 logger.debug("MegaD Server open port {}", port);
                 isRunning = true;
                 updateStatus(ThingStatus.ONLINE);
@@ -163,11 +165,11 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
 
             while (isRunning) {
                 try {
-                    s = ss != null ? ss.accept() : null;
+                    socket = serverSocket != null ? serverSocket.accept() : null;
                 } catch (IOException e) {
                     logger.error("ERROR in bridge. Incoming server has error: {}", e.getMessage());
                 }
-                if (!ss.isClosed()) {
+                if (!serverSocket.isClosed()) {
                     new Thread(startHttpSocket());
                 }
             }
@@ -177,8 +179,8 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
 
     protected Runnable startHttpSocket() {
         try {
-            this.is = s.getInputStream();
-            this.os = s.getOutputStream();
+            this.inputStream = socket.getInputStream();
+            this.outputStream = socket.getOutputStream();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -188,123 +190,102 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
         return null;
     }
 
+    private Map<String, String> splitQuery(String url) throws UnsupportedEncodingException {
+        if ((!url.contains("GET")) || (!url.contains("?"))) {
+            return null;
+        }
+        Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+        String query = url.split(" ")[1].replace("/?", "").trim();
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair.length() == 0) {
+                continue;
+            }
+
+            int idx = pair.indexOf("=");
+            query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"),
+                    URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
+
+        }
+        return query_pairs;
+    }
+
+    private String generateThingID(String port) {
+        String hostAddress = this.socket.getInetAddress().getHostAddress();
+        if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
+            hostAddress = "localhost";
+        }
+        String thingID = hostAddress + "." + port;
+        return thingID;
+    }
+
     private void readInput() {
-        BufferedReader br = new BufferedReader(new InputStreamReader(is));
+        BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
         while (isRunning) {
-            String s;
-            String[] getCommands;
-            String thingID, hostAddress;
+            String incomingUrl;
+            // String[] getCommands;
+            // String thingID, hostAddress;
             try {
-                s = br.readLine();
-                if (s == null || s.trim().length() == 0) {
+                incomingUrl = br.readLine();
+                if (incomingUrl == null || incomingUrl.trim().length() == 0) {
                     break;
                 }
-                if (s.contains("GET") && s.contains("?")) {
-                    logger.debug("incoming from Megad: {} {}", this.s.getInetAddress().getHostAddress(), s);
-                    String[] CommandParse = s.split("[/ ]");
-                    String command = CommandParse[2];
-                    getCommands = command.split("[?&>=]");
 
-                    for (int i = 0; getCommands.length > i; i++) {
-                        logger.debug("{} value {}", i, getCommands[i]);
-                    }
+                logger.debug("Incoming from Megad({}): {}", this.socket.getInetAddress().getHostAddress(), incomingUrl);
+                Map<String, String> queryPairs = splitQuery(incomingUrl);
 
-                    if (s.contains("m=1")) {
-                        hostAddress = this.s.getInetAddress().getHostAddress();
-                        if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                            hostAddress = "localhost";
-                        }
-                        thingID = hostAddress + "." + getCommands[2];
-                        megaDHandler = thingHandlerMap.get(thingID);
-                        if (megaDHandler != null) {
-                            megaDHandler.updateValues(hostAddress, getCommands, OnOffType.OFF);
-                        }
-                    } else if (s.contains("m=2")) {
-                        // do nothing -- long pressed
-                    } else if (s.contains("all=")) {
-                        logger.debug("Loop incoming from Megad: {} {}", this.s.getInetAddress().getHostAddress(), s);
-
-                        getCommands = s.split("[= ]");
-                        if (getCommands.length > 4) {
-                            String[] parsedStatus = getCommands[3].split("[;]");
-                            for (int i = 0; parsedStatus.length > i; i++) {
-                                String[] mode = parsedStatus[i].split("[/]");
-                                if (mode[0].contains("ON")) {
-                                    hostAddress = this.s.getInetAddress().getHostAddress();
-                                    if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                                        hostAddress = "localhost";
-                                    }
-                                    thingID = hostAddress + "." + i;
-                                    megaDHandler = thingHandlerMap.get(thingID);
-                                    if (megaDHandler != null) {
-                                        logger.debug("Updating: {} Value is: {}", thingID, mode);
-                                        megaDHandler.updateValues(hostAddress, parsedStatus, OnOffType.ON);
-                                    }
-                                } else if (mode[0].contains("OFF")) {
-                                    hostAddress = this.s.getInetAddress().getHostAddress();
-                                    if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                                        hostAddress = "localhost";
-                                    }
-                                    thingID = hostAddress + "." + i;
-                                    megaDHandler = thingHandlerMap.get(thingID);
-                                    if (megaDHandler != null) {
-                                        logger.debug("Updating: {} Value is: {}", thingID, mode);
-                                        megaDHandler.updateValues(hostAddress, parsedStatus, OnOffType.OFF);
-                                    }
-                                } else {
-                                    logger.debug("Not a switch");
-                                }
-                            }
-                        } else {
-                            String[] parsedStatus = getCommands[2].split("[;]");
-                            for (int i = 0; parsedStatus.length > i; i++) {
-                                String[] mode = parsedStatus[i].split("[/]");
-                                if (mode[0].contains("ON")) {
-                                    hostAddress = this.s.getInetAddress().getHostAddress();
-                                    if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                                        hostAddress = "localhost";
-                                    }
-                                    thingID = hostAddress + "." + i;
-                                    megaDHandler = thingHandlerMap.get(thingID);
-                                    if (megaDHandler != null) {
-                                        logger.debug("Updating: {} Value is: {}", thingID, parsedStatus[i]);
-                                        megaDHandler.updateValues(hostAddress, mode, OnOffType.ON);
-                                    }
-                                } else if (mode[0].contains("OFF")) {
-                                    hostAddress = this.s.getInetAddress().getHostAddress();
-                                    if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                                        hostAddress = "localhost";
-                                    }
-                                    thingID = hostAddress + "." + i;
-                                    megaDHandler = thingHandlerMap.get(thingID);
-                                    if (megaDHandler != null) {
-                                        logger.debug("Updating: {} Value is: {}", thingID, mode);
-                                        megaDHandler.updateValues(hostAddress, mode, OnOffType.OFF);
-                                    }
-                                } else {
-                                    logger.debug("Not a switch");
-                                }
-                            }
-                        }
-                    } else {
-                        hostAddress = this.s.getInetAddress().getHostAddress();
-                        if (hostAddress.equals("0:0:0:0:0:0:0:1")) {
-                            hostAddress = "localhost";
-                        }
-                        if (getCommands[1].equals("pt")) {
-                            thingID = hostAddress + "." + getCommands[2];
-                        } else {
-                            thingID = hostAddress + "." + getCommands[1];
-                        }
-                        megaDHandler = thingHandlerMap.get(thingID);
-                        if (megaDHandler != null) {
-                            megaDHandler.updateValues(hostAddress, getCommands, OnOffType.ON);
-                        }
-                    }
+                if (queryPairs == null) {
+                    logger.error("Invalid format for incoming string: {}", incomingUrl);
                     break;
+                }
+
+                // String[] CommandParse = incomingUrl.split("[/ ]");
+                // String command = CommandParse[2];
+                // getCommands = command.split("[?&>=]");
+
+                for (String key : queryPairs.keySet()) {
+                    logger.debug("Query pairs {} = {}", key, queryPairs.get(key));
+                }
+
+                if (queryPairs.containsKey("all")) {
+                    // TODO: Переписать all
+                    logger.debug("Srv-loop incoming param: {}", queryPairs.get("all"));
+
+                    /*
+                     * String[] parsedStatus = queryPairs.get("all").split("[;]");
+                     * for (int i = 0; parsedStatus.length > i; i++) {
+                     * String[] mode = parsedStatus[i].split("[/]");
+                     * if (mode[0].contains("ON")) {
+                     * thingID = generateThingID(String.valueOf(i));
+                     * megaDHandler = thingHandlerMap.get(thingID);
+                     * if (megaDHandler != null) {
+                     * logger.debug("Updating: {} Value is: {}", thingID, parsedStatus[i]);
+                     * megaDHandler.updateValues("hostAddress", mode, OnOffType.ON);
+                     * }
+                     * } else if (mode[0].contains("OFF")) {
+                     * thingID = generateThingID(String.valueOf(i));
+                     * megaDHandler = thingHandlerMap.get(thingID);
+                     * if (megaDHandler != null) {
+                     * logger.debug("Updating: {} Value is: {}", thingID, mode);
+                     * megaDHandler.updateValues("hostAddress", mode, OnOffType.OFF);
+                     * }
+                     * } else {
+                     * logger.debug("Not a switch");
+                     * }
+                     * }
+                     */
                 } else {
-                    break;
+                    if (!queryPairs.containsKey("pt")) {
+                        logger.error("Port in incoming url not found {}", incomingUrl);
+                        break;
+                    }
+                    String thingID = generateThingID(queryPairs.get("pt"));
+                    megaDHandler = thingHandlerMap.get(thingID);
+                    if (megaDHandler != null) {
+                        megaDHandler.updateValues(queryPairs);
+                    }
                 }
+
             } catch (IOException e) {
                 logger.error(e.getLocalizedMessage());
             }
@@ -315,9 +296,9 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
         String result = "HTTP/1.1 200 OK\r\n" + "Content-Type: text/html\r\n" + "Content-Length: " + 0 + "\r\n"
                 + "Connection: close\r\n\r\n";
         try {
-            os.write(result.getBytes());
-            is.close();
-            os.close();
+            outputStream.write(result.getBytes());
+            inputStream.close();
+            outputStream.close();
         } catch (IOException e) {
             logger.error(e.getLocalizedMessage());
         }
@@ -333,7 +314,7 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
         }
         isRunning = false;
         try {
-            ss.close();
+            serverSocket.close();
         } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();

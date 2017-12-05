@@ -14,6 +14,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +44,7 @@ import org.slf4j.LoggerFactory;
  */
 public class MegaDHandler extends BaseThingHandler {
 
-    private Logger logger = LoggerFactory.getLogger(MegaDHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(MegaDHandler.class);
 
     private ScheduledFuture<?> refreshPollingJob;
 
@@ -116,6 +117,70 @@ public class MegaDHandler extends BaseThingHandler {
                     + " error: " + e.getLocalizedMessage());
         }
 
+    }
+
+    public void updateValues(Map<String, String> queryPairs) {
+        // logger.debug("{},{},{}", hostAddress, getCommands, OnOff);
+        // logger.debug("getThing() -> {}", getThing().getUID().getId());
+        // logger.debug("getActiveChannelListAsString -> {}", getActiveChannelListAsString());
+        for (Channel channel : getThing().getChannels()) {
+
+            if (isLinked(channel.getUID().getId())) {
+                if ((channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_IN))
+                        || (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_OUT))) {
+                    // updateState(channel.getUID().getId(), OnOff);
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_IB)) {
+                    try {
+                        // updateState(channel.getUID().getId(), StringType.valueOf(getCommands[4]));
+                    } catch (Exception ex) {
+
+                    }
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_WIEGAND)) {
+                    try {
+                        // updateState(channel.getUID().getId(), StringType.valueOf(getCommands[4]));
+                    } catch (Exception ex) {
+
+                    }
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_AT)) {
+                    try {
+                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                    } catch (Exception ex) {
+
+                    }
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ST)) {
+                    try {
+                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                    } catch (Exception ex) {
+
+                    }
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ADC)) {
+                    try {
+                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                    } catch (Exception ex) {
+
+                    }
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_INCOUNT)) {
+
+                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_CONTACT)) {
+                    /*
+                     * if (OnOff.name() == "ON") {
+                     * updateState(channel.getUID().getId(), OpenClosedType.CLOSED);
+                     * } else if (OnOff.name() == "OFF") {
+                     * updateState(channel.getUID().getId(), OpenClosedType.OPEN);
+                     * }
+                     */
+                } else {
+                    /*
+                     * try {
+                     * updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                     * } catch (Exception ex) {
+                     * 
+                     * }
+                     */
+                }
+
+            }
+        }
     }
 
     public void updateValues(String hostAddress, String[] getCommands, OnOffType OnOff) {
