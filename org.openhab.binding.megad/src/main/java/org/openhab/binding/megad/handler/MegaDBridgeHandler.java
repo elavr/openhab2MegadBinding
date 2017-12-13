@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import org.eclipse.smarthome.core.library.types.OnOffType;
 import org.eclipse.smarthome.core.thing.Bridge;
 import org.eclipse.smarthome.core.thing.ChannelUID;
 import org.eclipse.smarthome.core.thing.ThingStatus;
@@ -223,8 +224,6 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
         BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
         while (isRunning) {
             String incomingUrl;
-            // String[] getCommands;
-            // String thingID, hostAddress;
             try {
                 incomingUrl = br.readLine();
                 if (incomingUrl == null || incomingUrl.trim().length() == 0) {
@@ -239,48 +238,38 @@ public class MegaDBridgeHandler extends BaseBridgeHandler {
                     break;
                 }
 
-                // String[] CommandParse = incomingUrl.split("[/ ]");
-                // String command = CommandParse[2];
-                // getCommands = command.split("[?&>=]");
-
                 for (String key : queryPairs.keySet()) {
                     logger.debug("Query pairs {} = {}", key, queryPairs.get(key));
                 }
 
+                String thingID;
                 if (queryPairs.containsKey("all")) {
-                    // TODO: Переписать all
                     logger.debug("Srv-loop incoming param: {}", queryPairs.get("all"));
+                    String[] parsedStatus = queryPairs.get("all").split("[;]");
+                    for (int i = 0; parsedStatus.length > i; i++) {
+                        String[] mode = parsedStatus[i].split("[/]");
+                        if (mode[0].contains("ON") || mode[0].contains("OFF")) {
+                            thingID = generateThingID(String.valueOf(i));
+                            megaDHandler = thingHandlerMap.get(thingID);
+                            if (megaDHandler != null) {
+                                logger.debug("Updating {} value from {} is {}", thingID, parsedStatus[i],
+                                        OnOffType.valueOf(mode[0]));
+                                megaDHandler.updateValues(mode, OnOffType.valueOf(mode[0]));
+                            }
+                        } else {
+                            logger.debug("{} not a switch", parsedStatus[i]);
+                        }
+                    }
 
-                    /*
-                     * String[] parsedStatus = queryPairs.get("all").split("[;]");
-                     * for (int i = 0; parsedStatus.length > i; i++) {
-                     * String[] mode = parsedStatus[i].split("[/]");
-                     * if (mode[0].contains("ON")) {
-                     * thingID = generateThingID(String.valueOf(i));
-                     * megaDHandler = thingHandlerMap.get(thingID);
-                     * if (megaDHandler != null) {
-                     * logger.debug("Updating: {} Value is: {}", thingID, parsedStatus[i]);
-                     * megaDHandler.updateValues("hostAddress", mode, OnOffType.ON);
-                     * }
-                     * } else if (mode[0].contains("OFF")) {
-                     * thingID = generateThingID(String.valueOf(i));
-                     * megaDHandler = thingHandlerMap.get(thingID);
-                     * if (megaDHandler != null) {
-                     * logger.debug("Updating: {} Value is: {}", thingID, mode);
-                     * megaDHandler.updateValues("hostAddress", mode, OnOffType.OFF);
-                     * }
-                     * } else {
-                     * logger.debug("Not a switch");
-                     * }
-                     * }
-                     */
                 } else {
                     if (!queryPairs.containsKey("pt")) {
                         logger.error("Port in incoming url not found {}", incomingUrl);
                         break;
                     }
-                    String thingID = generateThingID(queryPairs.get("pt"));
+                    thingID = generateThingID(queryPairs.get("pt"));
+
                     megaDHandler = thingHandlerMap.get(thingID);
+
                     if (megaDHandler != null) {
                         megaDHandler.updateValues(queryPairs);
                     }

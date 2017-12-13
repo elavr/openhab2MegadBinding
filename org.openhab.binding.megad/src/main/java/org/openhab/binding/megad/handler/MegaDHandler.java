@@ -120,70 +120,90 @@ public class MegaDHandler extends BaseThingHandler {
     }
 
     public void updateValues(Map<String, String> queryPairs) {
-        // logger.debug("{},{},{}", hostAddress, getCommands, OnOff);
-        // logger.debug("getThing() -> {}", getThing().getUID().getId());
-        // logger.debug("getActiveChannelListAsString -> {}", getActiveChannelListAsString());
+
+        OnOffType state = OnOffType.ON;
+
+        // skip long press (m=2)
+        if (queryPairs.containsKey("m") && queryPairs.get("m").equals("2")) {
+            return;
+        }
+
+        if (queryPairs.containsKey("m") && queryPairs.get("m").equals("1")) {
+            state = OnOffType.OFF;
+        }
+
         for (Channel channel : getThing().getChannels()) {
 
             if (isLinked(channel.getUID().getId())) {
                 if ((channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_IN))
                         || (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_OUT))) {
-                    // updateState(channel.getUID().getId(), OnOff);
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_IB)) {
+                    updateState(channel.getUID().getId(), state);
+                } /*
+                   * else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_IB)) {
+                   * try {
+                   * // updateState(channel.getUID().getId(), StringType.valueOf(getCommands[4]));
+                   * } catch (Exception ex) {
+                   *
+                   * }
+                   * 
+                   * }
+                   */ else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_WIEGAND)) {
                     try {
-                        // updateState(channel.getUID().getId(), StringType.valueOf(getCommands[4]));
+                        if (!queryPairs.containsKey("wg")) {
+                            logger.error("Not param wg in channel Wiegand by thing {}", channel.getUID().getId());
+                            return;
+                        }
+                        updateState(channel.getUID().getId(), StringType.valueOf(queryPairs.get("wg")));
                     } catch (Exception ex) {
 
                     }
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_WIEGAND)) {
-                    try {
-                        // updateState(channel.getUID().getId(), StringType.valueOf(getCommands[4]));
-                    } catch (Exception ex) {
-
+                } /*
+                   * else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_AT)) {
+                   * try {
+                   * // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                   * } catch (Exception ex) {
+                   * 
+                   * }
+                   * }
+                   */ else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ST)) {
+                    updateState(channel.getUID().getId(),
+                            DecimalType.valueOf(queryPairs.containsKey("st") ? queryPairs.get("st") : "0"));
+                } /*
+                   * else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ADC)) {
+                   * try {
+                   * // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
+                   * } catch (Exception ex) {
+                   * 
+                   * }
+                   * }
+                   */ else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_INCOUNT)) {
+                    if (!queryPairs.containsKey("cnt")) {
+                        logger.error("Not param cnt in channel Counter by thing {}", channel.getUID().getId());
+                        return;
                     }
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_AT)) {
-                    try {
-                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
-                    } catch (Exception ex) {
-
-                    }
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ST)) {
-                    try {
-                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
-                    } catch (Exception ex) {
-
-                    }
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_ADC)) {
-                    try {
-                        // updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
-                    } catch (Exception ex) {
-
-                    }
-                } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_INCOUNT)) {
-
+                    updateState(channel.getUID().getId(), DecimalType.valueOf(queryPairs.get("cnt")));
                 } else if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_CONTACT)) {
-                    /*
-                     * if (OnOff.name() == "ON") {
-                     * updateState(channel.getUID().getId(), OpenClosedType.CLOSED);
-                     * } else if (OnOff.name() == "OFF") {
-                     * updateState(channel.getUID().getId(), OpenClosedType.OPEN);
-                     * }
-                     */
+                    updateState(channel.getUID().getId(),
+                            (state == OnOffType.ON) ? OpenClosedType.CLOSED : OpenClosedType.OPEN);
                 } else {
+
+                    logger.error("This channel not work!");
+
                     /*
                      * try {
                      * updateState(channel.getUID().getId(), DecimalType.valueOf(getCommands[2]));
                      * } catch (Exception ex) {
-                     * 
+                     *
                      * }
                      */
                 }
 
             }
         }
+
     }
 
-    public void updateValues(String hostAddress, String[] getCommands, OnOffType OnOff) {
+    public void updateValues(String[] getCommands, OnOffType OnOff) {
         // logger.debug("{},{},{}", hostAddress, getCommands, OnOff);
         // logger.debug("getThing() -> {}", getThing().getUID().getId());
         // logger.debug("getActiveChannelListAsString -> {}", getActiveChannelListAsString());
